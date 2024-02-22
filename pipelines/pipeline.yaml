@@ -1,0 +1,113 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: golang-example-pipiline
+spec:
+  params:
+  - name: REVISION
+    value: main
+  pipelineSpec:
+    params:
+      - name: REVISION
+        type: string
+        default: ""
+    tasks:
+    - name: git-clone-sourcecode
+      taskRef:
+        resolver: cluster
+        params:
+        - name: name
+          value: git-clone
+        - name: kind
+          value: task
+        - name: namespace
+          value: default
+      workspaces:
+      - name: output
+        workspace: source-volume
+      - name: ssh-directory
+        workspace: ssh-creds
+      params:
+      - name: url
+        value: git@github.com:shadowmktk/golang-example-project.git
+      - name: revision
+        value: $(params.REVISION)
+      - name: subdirectory
+        value: sourcecode
+
+    - name: git-clone-deployment
+      runAfter:
+      - git-clone-sourcecode
+      taskRef:
+        resolver: cluster
+        params:
+        - name: name
+          value: git-clone
+        - name: kind
+          value: task
+        - name: namespace
+          value: default
+      workspaces:
+      - name: output
+        workspace: source-volume
+      - name: ssh-directory
+        workspace: ssh-creds
+      params:
+      - name: url
+        value: git@github.com:shadowmktk/golang-example-deployments.git
+      - name: revision
+        value: $(params.REVISION)
+      - name: subdirectory
+        value: deployment
+      - name: sslVerify
+        value: false
+
+    - name: manifest-update
+      runAfter:
+      - git-clone-deployment
+      taskRef:
+        resolver: cluster
+        params:
+        - name: name
+          value: git-cli
+        - name: kind
+          value: task
+        - name: namespace
+          value: default
+      workspaces:
+      - name: source
+        workspace: source-volume
+      - name: ssh-directory
+        workspace: ssh-creds
+      params:
+      - name: BASE_IMAGE
+        value: registry.cn-hangzhou.aliyuncs.com/cloud-native-cn/git-init:v0.40.2
+      - name: GIT_USER_NAME
+        value: devops-robot
+      - name: GIT_USER_EMAIL
+        value: devops-robot@devops.io
+      - name: USER_HOME
+        value: /home/git
+      - name: GIT_SCRIPT
+        value: |
+          DEPLOY_FILE=./deployments/test/golang-example.yaml
+
+          cd deployment
+          sed -i "s@golang:.*@registry.cn-hangzhou.aliyuncs.com/cloud-native-cn/golang-example:$(tasks.git-clone.results.commit)@g" $DEPLOY_FILE
+
+          git config --global --add safe.directory $(workspaces.source.path)/deployment
+          git add $DEPLOY_FILE
+          git commit -a -m "automatic update by pipeline bot: registry.cn-hangzhou.aliyuncs.com/cloud-native-cn/golang-example:$(tasks.git-clone.results.commit)"
+          git push origin HEAD:$(params.REVISION) --force
+
+    workspaces:
+    - name: source-volume
+  workspaces:
+  - name: source-volume
+    persistentVolumeClaim:
+      claimName: source-pvc
+  - name: empty-dir
+    emptyDir: {}
+  - name: ssh-creds
+    secret:
+      secretName: git-ssh-key
