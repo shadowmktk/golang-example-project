@@ -2,6 +2,7 @@ apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
   name: golang-example-pipiline
+  namespace: golang-example
 spec:
   params:
   - name: REVISION
@@ -21,7 +22,7 @@ spec:
         - name: kind
           value: task
         - name: namespace
-          value: default
+          value: project-pipelines
       workspaces:
       - name: output
         workspace: source-volume
@@ -46,7 +47,7 @@ spec:
         - name: kind
           value: task
         - name: namespace
-          value: default
+          value: project-pipelines
       workspaces:
       - name: output
         workspace: source-volume
@@ -73,7 +74,7 @@ spec:
         - name: kind
           value: task
         - name: namespace
-          value: default
+          value: project-pipelines
       workspaces:
       - name: source
         workspace: source-volume
@@ -105,9 +106,9 @@ spec:
   workspaces:
   - name: source-volume
     persistentVolumeClaim:
-      claimName: source-pvc
+      claimName: shared-data
   - name: empty-dir
     emptyDir: {}
   - name: ssh-creds
     secret:
-      secretName: git-ssh-key
+      secretName: git-credentials
