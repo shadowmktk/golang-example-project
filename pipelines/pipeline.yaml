@@ -4,10 +4,21 @@ metadata:
   name: golang-example-pipiline
   namespace: golang-example
 spec:
+  workspaces:
+  - name: source-volume
+    persistentVolumeClaim:
+      claimName: shared-data
+  - name: empty-dir
+    emptyDir: {}
+  - name: ssh-creds
+    secret:
+      secretName: git-credentials
   params:
   - name: REVISION
     value: main
   pipelineSpec:
+    workspaces:
+    - name: source-volume
     params:
       - name: REVISION
         type: string
@@ -91,24 +102,15 @@ spec:
         value: /home/git
       - name: GIT_SCRIPT
         value: |
-          DEPLOY_FILE=./deployments/test/golang-example.yaml
+          PROJECT_IMAGE_URL=registry.cn-hangzhou.aliyuncs.com/cloud-native-cn/golang-example:$(tasks.git-clone.results.commit)
+          #PROJECT_IMAGE_URL=$(task.image-build.results.IMAGE_URL)
+          PROJECT_SOURCE_DIRECTORY=$(workspaces.source.path)/deployment
+          PROJECT_DEPLOY_FILE=$PROJECT_SOURCE_DIRECTORY/deployments/test/golang-example.yaml
 
           cd deployment
-          sed -i "s@golang:.*@registry.cn-hangzhou.aliyuncs.com/cloud-native-cn/golang-example:$(tasks.git-clone.results.commit)@g" $DEPLOY_FILE
+          sed -i "s@golang:.*@$PROJECT_IMAGE_URL@g" $PROJECT_DEPLOY_FILE
 
-          git config --global --add safe.directory $(workspaces.source.path)/deployment
-          git add $DEPLOY_FILE
-          git commit -a -m "automatic update by pipeline bot: registry.cn-hangzhou.aliyuncs.com/cloud-native-cn/golang-example:$(tasks.git-clone.results.commit)"
+          git config --global --add safe.directory $PROJECT_SOURCE_DIRECTORY
+          git add $PROJECT_DEPLOY_FILE
+          git commit -a -m "automatic update by pipeline bot: $PROJECT_IMAGE_URL"
           git push origin HEAD:$(params.REVISION) --force
-
-    workspaces:
-    - name: source-volume
-  workspaces:
-  - name: source-volume
-    persistentVolumeClaim:
-      claimName: shared-data
-  - name: empty-dir
-    emptyDir: {}
-  - name: ssh-creds
-    secret:
-      secretName: git-credentials
